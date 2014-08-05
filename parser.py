@@ -9,25 +9,40 @@ CURRENT_KWARG_COUNT = 'CURRENT_KWARG_COUNT'
 ITER_STACK = 'ITER_STACK'
 COMMON_BUFFER = 'COMMON_BUFFER'
 ATOM_DEST = 'ATOM_DEST'
+CASE_SENSITIVE = 'CASE_SENSITIVE'
 
 #############
-# {Arg,Kw,}Fn class that handles the real function
+# Fn class that handles the real function
 # which will be applied on each args.
 #############
 
 
 class Fn(object):
-    def __init__(self, fn, index=None):
+    """
+    All *Fn classes should inherit the Fn class directly or not directly
+    Then rewrite its own __call__ method
+    """
+    def __init__(self, fn, index=None, options=None):
         self.fn = fn
         self.index = index
+        self.options = options
 
     def __call__(self, *args, **kwargs):
+        """
+        as the __call__ method of object itself looks like:
+            __call__(self, *args, **kwargs)
+        and I'm not gotta change it, processing `args` needs extra attention.
+        """
         return self.fn(*args, **kwargs)
 
 
-class ArgFn(Fn):
-    def __init__(self, fn, index=None):
-        super().__init__(fn, index)
+class AnyFn(Fn):
+    """
+    handle the '~A' directives
+    """
+
+    def __init__(self, fn, index=None, options=None):
+        super().__init__(fn, index, options)
 
     def __call__(self, *args, **kwargs):
         if self.index is None:
@@ -35,7 +50,28 @@ class ArgFn(Fn):
         return self.fn(args[self.index])
 
 
+class WriteFn(AnyFn):
+    """
+    handle the '~W' directives
+    just like AnyFn, but this uses repr() rather than fn to
+    product a string from the given argument.
+    """
+
+    def __init__(self, fn=None, index=None, options=None):
+        super().__init__(fn, index, options)
+
+    def __call__(self, *args, **kwargs):
+        if self.index is None:
+            return repr(args[0])
+        return repr(args[self.index])
+
+
 class KwFn(Fn):
+    # TODO try make this compatible with the origin {key} notations
+    """
+    NOT IMPLEMENTED YET
+    """
+
     def __init__(self, fn, index=None):
         super().__init__(fn, index)
 
@@ -54,7 +90,7 @@ class IterFn(Fn):
         # the index is no more meaningful
         # This will use the given *one* arg.
         for atom in self.fn:
-            if isinstance(atom, (ArgFn, KwFn)):
+            if isinstance(atom, (AnyFn, KwFn)):
                 atom.index = None
         pieces = []
         # TODO HANDLE kwargs
@@ -103,11 +139,12 @@ def parse_ctrl(ctrl):
               CURRENT_KWARG_COUNT: 0,
               ITER_STACK: [],
               COMMON_BUFFER: [],
-              ATOM_DEST: atoms}
+              ATOM_DEST: atoms,
+              CASE_SENSITIVE: True}
     dest = atoms
     for c in ctrl:
         retval, next_action = next_action(c, status)
-        if isinstance(retval, (str, ArgFn, KwFn)):
+        if isinstance(retval, (str, AnyFn, KwFn)):
             dest.append(retval)
         elif isinstance(retval, Exception):
             raise retval
@@ -151,17 +188,25 @@ def read(c: str, status: dict):
 
 
 def read_tilde(c: str, status: dict):
-    c = c.lower()
+    if not status[CASE_SENSITIVE]:
+        c = c.upper()
     if c == '~':
         status[COMMON_BUFFER].append('~')
         return None, read
-    elif c == 'a':
+    elif c == 'A':
         index = status[CURRENT_ARG_COUNT]
         status[CURRENT_ARG_COUNT] += 1
-        return ArgFn(fn=lambda x: str(x),
+        return AnyFn(fn=lambda x: str(x),
                      index=index), read
+    elif c == 'W':
+        index = status[CURRENT_ARG_COUNT]
+        status[CURRENT_ARG_COUNT] += 1
+        return WriteFn(index=index), read
     elif c == '%':
         status[COMMON_BUFFER].append('\n')
+        return None, read
+    elif c == 'T':
+        status[COMMON_BUFFER].append('\t')
         return None, read
     elif c == '{':
         status[ITER_STACK].append([{'index': status[CURRENT_ARG_COUNT],
@@ -191,7 +236,7 @@ def _count_atom(atoms: list, find: type):
 def _atom_caller(arg, kwargs):
     def __atom_caller(atom: Fn):
         # Both ArgFn and IterFn in this case
-        if isinstance(atom, ArgFn):
+        if isinstance(atom, (AnyFn, WriteFn)):
             return atom(*arg)
         elif isinstance(atom, IterFn):
             return atom(*arg)
@@ -208,7 +253,7 @@ def _atom_caller(arg, kwargs):
 
 
 def _combine_atoms(atoms: list):
-    _arg_count = _count_atom(atoms, ArgFn) + _count_atom(atoms, IterFn)
+    _arg_count = _count_atom(atoms, AnyFn) + _count_atom(atoms, IterFn)
     _kwarg_count = _count_atom(atoms, KwFn)
 
     def __combine_atoms(*args, **kwargs):
