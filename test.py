@@ -41,6 +41,24 @@ class UTestCharFn(UTest):
         ]
 
 
+class UTestFreshLine(UTest):
+    def set_cases(self):
+        self.cases = [
+            ('~&', ''),
+            ('~42&', '\n' * 41),
+            ('~%~2&', '\n\n\n'),
+            ('~%->~0&<-', '\n-><-'),
+            ('~A~&', '\n', '\n\n'),
+        ]
+
+
+class UTestEscape(UTest):
+    def set_cases(self):
+        self.cases = [
+            ('~~~%~|', '~\n\f'),
+            ('~2~~3%~4|', '~~\n\n\n\f\f\f\f'),
+        ]
+
 class UTestCLFormat(UTest):
     def _set_cases(self):
         self.cases = [
@@ -51,7 +69,7 @@ class UTestCLFormat(UTest):
 
 
 def main():
-    classes = [UTestCharFn]
+    classes = [UTestCharFn, UTestFreshLine, UTestEscape]
     suite = unittest.TestSuite()
     for cls in classes:
         suite.addTest(cls("test_run"))

@@ -45,7 +45,7 @@ def parse_ctrl(ctrl):
         control_func([*args, [**kwargs]])
     who's finally return value is the formatted sting.
 
-    The parser has 3 man steps in the parser:
+    The parser has 3 steps in the main loop :
         1) initialize the status, `next_action`, `dest`, etc.
         2) execute the main loop, as:
             a. call `next_action` with 2 arguments, the current character
@@ -140,17 +140,26 @@ def read_tilde(c: str, status: dict):
     """
     When meet tildes, the program comes to a big switch.
     """
+    escape = {'~': '~',
+              '%': '\n',
+              '|': '\f'}
     if not status[CASE_SENSITIVE]:
         c = c.upper()
-    # handle escaped characters
-    if c == '~':
-        status[COMMON_BUFFER].append('~')
-        return None, read
-    elif c == '%':
-        status[COMMON_BUFFER].append('\n')
-        return None, read
-    elif c == 'T':
-        status[COMMON_BUFFER].append('\t')
+    # handle escaped characters, supporting counts
+    if c in escape:
+        count = 1
+        if status[OPTION_BUFFER]:
+            try:
+                opt_count = int(''.join(status[OPTION_BUFFER]))
+                if opt_count < 0:
+                    raise ValueError()
+            except:
+                raise SyntaxError()
+            else:
+                count = opt_count
+        chars = escape[c] * count
+        status[OPTION_BUFFER].clear()
+        status[COMMON_BUFFER].append(chars)
         return None, read
     # handle prefixing introductions
     elif c in {':', '@'} or c.isdigit():
@@ -174,7 +183,6 @@ def read_tilde(c: str, status: dict):
                                     'depth': len(status[ITER_STACK])}])
         # Restart the counter for this frame.
         status[CURRENT_ARG_COUNT] = 0
-        # TODO handle the god damn kwargs here
         return GO_TO_LAST_ITER, read
     elif c == '}':
         return GO_UPWARD, read
