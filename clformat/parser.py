@@ -108,6 +108,11 @@ def parse_ctrl(ctrl):
             raise TypeError('Got a {} when parsing control string.'
                             '<class \'Fn\'> excepted.'
                             .format(type(retval)))
+    # check for remaining characters
+    if status[COMMON_BUFFER]:
+        atoms.append(''.join(status[COMMON_BUFFER]))
+    if status[OPTION_BUFFER]:
+        raise SyntaxError('Non-terminated control string.')
     return combine_atoms(atoms)
 
 
