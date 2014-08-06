@@ -13,11 +13,13 @@ Only tested in CPython 3.4.1, I'm sorry but clformar cannot works in PyPy3 now. 
 
 ## Usage
 
-'''Python
+```Python
 from clformat.fn import clformat
-'''
-
-and try it.
+```
+and try it
+```Python
+clformat(None, '~{~A~}!', ['Hello', 'world'])
+```
 
 # Documention
 
