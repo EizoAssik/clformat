@@ -61,7 +61,19 @@ class StatusFn(Fn):
     the already formatted pieces, like conditional
     newline.
     """
-    pass
+
+    def __init__(self, pieces, options):
+        super().__init__(options=options)
+        self.pieces = pieces
+
+    def __call__(self, *args, **kwargs):
+        return self.fn()
+
+    def fn(self):
+        pass
+
+    def set_pieces(self, pieces):
+        self.pieces = pieces
 
 
 class IterFn(Fn):
@@ -74,14 +86,15 @@ class IterFn(Fn):
         self.atoms = atoms
 
     def __call__(self, *args, **kwargs):
-        # As all the atoms will be called one by one
-        # the index is no more meaningful
-        # This will use the given *one* arg.
+        """
+        As all the atoms will be called one by one
+        the index is no more meaningful
+        This will use the given *one* arg.
+        """
         for atom in self.atoms:
             if isinstance(atom, (ArgFn, KwFn)):
                 atom.index = None
         pieces = []
-        # TODO HANDLE kwargs
         atom_iter = cycle(self.atoms)
         args_iter = iter(args[0])
         for atom in atom_iter:
@@ -205,6 +218,33 @@ class CharFn(ArgFn):
             return 'Control-{}'.format(CharFn.spell_out(char[1]))
 
 
+class FreshLineFn(StatusFn):
+    def __init__(self, pieces=None, options=None):
+        super().__init__(pieces, options)
+        self.count = 1
+        self.init_option()
+
+    def init_option(self):
+        if not self.options_str:
+            return
+        try:
+            count = int(self.options_str)
+            if count < 0:
+                raise ValueError()
+        except:
+            raise SyntaxError('Cannot understand directive ~{}&'
+                              .format(self.options_str))
+        else:
+            self.count = count
+
+    def fn(self):
+        if self.count is 0:
+            return ''
+        for piece in self.pieces:
+            if '\n' in piece:
+                return '\n' * self.count
+        return '\n' * (self.count-1)
+
 #################
 # Below, functions to make a fn
 #################
@@ -212,14 +252,15 @@ class CharFn(ArgFn):
 CLASS_ROUTER = {
     'A': AnyFn,
     'W': WriteFn,
-    'C': CharFn
+    'C': CharFn,
+    '&': FreshLineFn
 }
 
 
-def make_fn_obj(directive, index, options):
+def make_fn_obj(directive=None, index=None, options=None):
     """
     make fn-object for the following directives:
-        ~A, ~W, ~C, ~$, ~D,
+        ~A, ~W, ~C, ~&
     """
     fn_class = CLASS_ROUTER.get(directive, NotImplemented)
     if fn_class is NotImplemented:
@@ -228,7 +269,10 @@ def make_fn_obj(directive, index, options):
                           .format(options, directive))
     # As fn has not been removed, but not used any more,
     # I'm passing a None here
-    return fn_class(index=index, options=options)
+    if issubclass(fn_class, ArgFn):
+        return fn_class(index=index, options=options)
+    elif issubclass(fn_class, StatusFn):
+        return fn_class(options=options)
 
 
 def _count_atom(atoms: list, find: type):
@@ -239,29 +283,6 @@ def _count_atom(atoms: list, find: type):
     return counter
 
 
-def _atom_caller(arg, kwargs):
-    """
-    Helper to call the Fn-Objects' __call__ methods.
-    """
-
-    def __atom_caller(atom: Fn):
-        # Both ArgFn and IterFn in this case
-        if isinstance(atom, ArgFn):
-            return atom(*arg)
-        elif isinstance(atom, IterFn):
-            return atom(*arg)
-        elif isinstance(atom, KwFn):
-            return atom(**kwargs)
-        elif isinstance(atom, str):
-            return atom
-        else:
-            raise TypeError('Error occurred during combing atoms. '
-                            'ArgFn/KwFn objects excepted, got {}.'
-                            .format(str(type(atom))))
-
-    return __atom_caller
-
-
 def combine_atoms(atoms: list):
     """
     Combine a set of Fn-Objects into a single callable.
@@ -269,13 +290,28 @@ def combine_atoms(atoms: list):
     _arg_count = _count_atom(atoms, ArgFn) + _count_atom(atoms, IterFn)
     _kwarg_count = _count_atom(atoms, KwFn)
 
-    def __combine_atoms(*args, **kwargs):
+    def _combine_atoms(*args, **kwargs):
         if len(args) != _arg_count:
             raise ValueError("Need {} of args, got {}"
                              .format(_arg_count, len(args)))
         if len(kwargs) != _kwarg_count:
             raise ValueError("Need {} of kwargs, got {}"
                              .format(_kwarg_count, len(kwargs)))
-        return ''.join(map(_atom_caller(args, kwargs), atoms))
+        pieces = []
+        for atom in atoms:
+            if isinstance(atom, ArgFn):
+                pieces.append(atom(*args))
+            elif isinstance(atom, IterFn):
+                pieces.append(atom(*args))
+            elif isinstance(atom, StatusFn):
+                atom.set_pieces(pieces)
+                pieces.append(atom())
+            elif isinstance(atom, str):
+                pieces.append(atom)
+            else:
+                raise TypeError('Error occurred during combing atoms. '
+                                'ArgFn/KwFn objects excepted, got {}.'
+                                .format(str(type(atom))))
+        return ''.join(pieces)
 
-    return __combine_atoms
+    return _combine_atoms

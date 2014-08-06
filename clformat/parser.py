@@ -6,7 +6,7 @@ the given arguments.
 """
 
 from .directives import combine_atoms, make_fn_obj
-from .directives import ArgFn, IterFn, WriteFn, KwFn
+from .directives import ArgFn, StatusFn, IterFn
 
 #############
 # String Contents & Flags
@@ -81,7 +81,7 @@ def parse_ctrl(ctrl):
     dest = atoms
     for c in ctrl:
         retval, next_action = next_action(c, status)
-        if isinstance(retval, (str, ArgFn, KwFn)):
+        if isinstance(retval, (str, ArgFn, StatusFn)):
             dest.append(retval)
         elif isinstance(retval, Exception):
             raise retval
@@ -111,8 +111,10 @@ def parse_ctrl(ctrl):
     # check for remaining characters
     if status[COMMON_BUFFER]:
         atoms.append(''.join(status[COMMON_BUFFER]))
+        status[COMMON_BUFFER].clear()
     if status[OPTION_BUFFER]:
-        raise SyntaxError('Non-terminated control string.')
+        raise SyntaxError('Non-terminated control string.'
+                          'Remaining: {}'.format(status[OPTION_BUFFER]))
     return combine_atoms(atoms)
 
 
@@ -151,7 +153,7 @@ def read_tilde(c: str, status: dict):
         status[COMMON_BUFFER].append('\t')
         return None, read
     # handle prefixing introductions
-    elif c == ':' or c == '@':
+    elif c in {':', '@'} or c.isdigit():
         status[OPTION_BUFFER].append(c)
         return None, read_tilde
     # handle directives
@@ -161,6 +163,10 @@ def read_tilde(c: str, status: dict):
         options = ''.join(status[OPTION_BUFFER])
         status[OPTION_BUFFER].clear()
         return make_fn_obj(directive=c, index=index, options=options), read
+    elif c in {'&'}:
+        options = ''.join(status[OPTION_BUFFER])
+        status[OPTION_BUFFER].clear()
+        return make_fn_obj(directive=c, options=options), read
     elif c == '$':
         pass
     elif c == '{':
