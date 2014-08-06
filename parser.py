@@ -5,8 +5,8 @@ and generate the finally callable object to format
 the given arguments.
 """
 
-from directives import combine_atoms
-from directives import AnyFn, IterFn, WriteFn, KwFn
+from directives import combine_atoms, make_fn_obj
+from directives import ArgFn, IterFn, WriteFn, KwFn
 
 #############
 # String Contents & Flags
@@ -81,7 +81,7 @@ def parse_ctrl(ctrl):
     dest = atoms
     for c in ctrl:
         retval, next_action = next_action(c, status)
-        if isinstance(retval, (str, AnyFn, KwFn)):
+        if isinstance(retval, (str, ArgFn, KwFn)):
             dest.append(retval)
         elif isinstance(retval, Exception):
             raise retval
@@ -150,20 +150,12 @@ def read_tilde(c: str, status: dict):
         status[OPTION_BUFFER].append(c)
         return None, read_tilde
     # handle directives
-    elif c == 'A':
+    elif c in {'A', 'C', 'W'}:
         index = status[CURRENT_ARG_COUNT]
         status[CURRENT_ARG_COUNT] += 1
         options = ''.join(status[OPTION_BUFFER])
         status[OPTION_BUFFER].clear()
-        return AnyFn(fn=lambda x: str(x),
-                     index=index,
-                     options=options), read
-    elif c == 'W':
-        index = status[CURRENT_ARG_COUNT]
-        status[CURRENT_ARG_COUNT] += 1
-        options = ''.join(status[OPTION_BUFFER])
-        status[OPTION_BUFFER].clear()
-        return WriteFn(index=index, options=options), read
+        return make_fn_obj(directive=c, index=index, options=options), read
     elif c == '$':
         pass
     elif c == '{':
