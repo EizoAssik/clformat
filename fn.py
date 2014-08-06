@@ -10,7 +10,7 @@ def _clformat(ctrl_str, *args, **kwargs):
 
 def clformat(dest, ctrl_str, *args, **kwargs):
     _string = _clformat(ctrl_str, *args, **kwargs)
-    if dest is False:
+    if dest is False or dest is None:
         return _string
     if dest is True:
         print(_string)
