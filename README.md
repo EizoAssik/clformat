@@ -14,11 +14,15 @@ Only tested in CPython 3.4.1, I'm sorry but clformar cannot works in PyPy3 now. 
 ## Usage
 
 ```Python
-from clformat.fn import clformat
+from clformat import clformat
 ```
-and try it
+or
 ```Python
-clformat(None, '~{~A~}!', ['Hello', 'world'])
+from clformat import *
+```
+and try it:
+```Python
+clformat(None, '~{~A~}!', ['Hello', ' ', 'world'])
 ```
 
 # Documention
