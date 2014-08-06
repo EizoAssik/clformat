@@ -1,6 +1,7 @@
 # clformat
+
 A Python implementation of the **format** function in Common Lisp.
-===========
+
 ## About
 A Python implementation of the **format** function in Common Lisp.
 
