@@ -2,7 +2,7 @@
 import unittest
 import logging
 
-from fn import clformat
+from clformat import clformat
 
 
 class UTest(unittest.TestCase):
