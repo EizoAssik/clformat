@@ -1,5 +1,5 @@
 #encoding=utf-8
-from parser import parse_ctrl
+from .parser import parse_ctrl
 
 
 def _clformat(ctrl_str, *args, **kwargs):

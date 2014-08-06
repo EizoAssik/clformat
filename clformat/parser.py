@@ -5,8 +5,8 @@ and generate the finally callable object to format
 the given arguments.
 """
 
-from directives import combine_atoms, make_fn_obj
-from directives import ArgFn, IterFn, WriteFn, KwFn
+from .directives import combine_atoms, make_fn_obj
+from .directives import ArgFn, IterFn, WriteFn, KwFn
 
 #############
 # String Contents & Flags
