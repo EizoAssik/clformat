@@ -3,8 +3,7 @@ from fn import clformat
 
 
 def main():
-    s = clformat(True, '~{~a -> ~{~A,~}~%~}', [1, [1, 2], 2, [2, 3], 3, [3, 4]])
-    # s = clformat(True, "Hello World ~a ~~ ~{~A~}", 1, [1, 2])
+    s = clformat(True, '~{~:A、~%~{~A~A~T~{~W,~}~}~%~}', ['一', [1, 2, ['a', 'b']], '二', [1, 2, ['a', 'b']]])
     print(s, type(s))
 
 
