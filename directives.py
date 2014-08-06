@@ -3,6 +3,8 @@
 All the functions & classes is implemented here.
 """
 from itertools import cycle
+from unicodedata import name
+import string
 
 
 #############
@@ -17,10 +19,10 @@ class Fn(object):
     Then rewrite its own __call__ method
     """
 
-    def __init__(self, fn, index=None, options=None):
-        self.fn = fn
+    def __init__(self, index=None, options=None):
+        # self._fn is never used
         self.index = index
-        self.options = options
+        self.options_str = options
 
     def __call__(self, *args, **kwargs):
         """
@@ -28,68 +30,59 @@ class Fn(object):
             __call__(self, *args, **kwargs)
         and I'm not gotta change it, processing `args` needs extra attention.
         """
-        return self.fn(*args, **kwargs)
+        pass
+
+    def init_option(self):
+        return self.options_str
 
 
-class AnyFn(Fn):
+class ArgFn(Fn):
     """
-    handle the '~A' directives
+    The base class designed to handle the directives
+    that only uses positional arguments.
     """
 
-    def __init__(self, fn, index=None, options=None):
-        super().__init__(fn, index, options)
+    def __init__(self, index=None, options=None):
+        super().__init__(index=index, options=options)
 
     def __call__(self, *args, **kwargs):
         if self.index is None:
             return self.fn(args[0])
         return self.fn(args[self.index])
 
+    def fn(self, arg):
+        pass
 
-class WriteFn(AnyFn):
+
+class StatusFn(Fn):
     """
-    handle the '~W' directives
-    just like AnyFn, but this uses repr() rather than fn to
-    product a string from the given argument.
+    The base class designed to handle the directives
+    that only uses current status of the parser, and
+    the already formatted pieces, like conditional
+    newline.
     """
-
-    def __init__(self, fn=None, index=None, options=None):
-        super().__init__(fn, index, options)
-
-    def __call__(self, *args, **kwargs):
-        if self.index is None:
-            return repr(args[0])
-        return repr(args[self.index])
-
-
-class KwFn(Fn):
-    # TODO try make this compatible with the origin {key} notations of Python
-    """
-    NOT IMPLEMENTED YET
-    """
-
-    def __init__(self, fn, index=None):
-        super().__init__(fn, index)
-
-    def __call__(self, *args, **kwargs):
-        if self.index:
-            return self.fn(args[0])
-        return self.fn(kwargs[self.index])
+    pass
 
 
 class IterFn(Fn):
+    """
+    IterFn is used tu handle the loops in the control string.
+    """
+
     def __init__(self, atoms, index):
-        super().__init__(atoms, index)
+        super().__init__(index=index)
+        self.atoms = atoms
 
     def __call__(self, *args, **kwargs):
         # As all the atoms will be called one by one
         # the index is no more meaningful
         # This will use the given *one* arg.
-        for atom in self.fn:
-            if isinstance(atom, (AnyFn, KwFn)):
+        for atom in self.atoms:
+            if isinstance(atom, (ArgFn, KwFn)):
                 atom.index = None
         pieces = []
         # TODO HANDLE kwargs
-        atom_iter = cycle(self.fn)
+        atom_iter = cycle(self.atoms)
         args_iter = iter(args[0])
         for atom in atom_iter:
             if isinstance(atom, str):
@@ -103,7 +96,114 @@ class IterFn(Fn):
                 raise TypeError('Except Fn or str. {} get.'.format(type(atom)))
         return ''.join(pieces)
 
-REGISTERED_FN_CLASS = AnyFn, WriteFn, IterFn
+
+class StatusArgFn(ArgFn):
+    """
+    The base
+    """
+    pass
+
+
+class KwFn(Fn):
+    # TODO try make this compatible with the origin {key} notations of Python
+    """
+    The base class designed to handle the directives
+    that uses dictionary arguments.
+    NOT IMPLEMENTED YET
+    """
+
+
+class AnyFn(ArgFn):
+    """
+    Handle the '~A' directives.
+    """
+
+    def fn(self, arg):
+        return str(arg)
+
+
+class WriteFn(ArgFn):
+    """
+    handle the '~W' directives.
+    just like AnyFn, but this uses repr() rather than fn to
+    product a string from the given argument.
+    """
+
+    def fn(self, arg):
+        return repr(arg)
+
+
+class DigitFn(ArgFn):
+    """
+    Handle the '~A' directives.
+    """
+
+    def __call__(self, *args, **kwargs):
+        pass
+
+
+class CharFn(ArgFn):
+    """
+    CharFn is used to handle the '~C' directives.
+    As Python uses 'str'
+    """
+    SPELL_OUT = {
+        ' ': 'Space',
+        '\t': 'Tab',
+        '\n': 'Newline',
+        '\b': 'Backspace',
+        '\v': 'VTab',
+        '\f': 'Page',
+        '\r': 'Return',
+        '\l': 'Linefeed',
+        '\a': 'Rubout'
+    }
+
+    def __init__(self, index=None, options=None):
+        super().__init__(index=index, options=options)
+        self.spelled_out = False
+        self.read_back = False
+        self.keyboard = False
+        self.options = self.init_option()
+
+    def init_option(self):
+        if self.options_str is '':
+            return None
+        elif self.options_str is ':':
+            self.spelled_out = True
+        elif self.options_str is '@':
+            self.read_back = True
+        elif self.options_str is ':@' or '@:':
+            self.keyboard = True
+        else:
+            raise SyntaxError('Cannot understand directive ~{}C'
+                              .format(self.options_str))
+        return True
+
+    def fn(self, arg: str):
+        if self.options is None:
+            return str(arg)
+        if self.read_back:
+            return repr(arg)
+        if self.spelled_out:
+            return CharFn.spell_out(arg)
+        if self.keyboard:
+            return CharFn.keyboard(arg)
+        return arg
+
+    @classmethod
+    def spell_out(cls, char: str):
+        if char in cls.SPELL_OUT:
+            return cls.SPELL_OUT[char]
+        return char
+
+    @classmethod
+    def keyboard(cls, char: str):
+        if char.isupper():
+            return 'Shift-{}'.format(CharFn.spell_out(char))
+        if len(char) is 2 and char.startswith('^'):
+            return 'Control-{}'.format(CharFn.spell_out(char[1]))
+
 
 #################
 # Below, functions to make a fn
@@ -112,11 +212,7 @@ REGISTERED_FN_CLASS = AnyFn, WriteFn, IterFn
 CLASS_ROUTER = {
     'A': AnyFn,
     'W': WriteFn,
-}
-
-FUNCTION_ROUTER = {
-    'A': AnyFn,
-    'W': WriteFn,
+    'C': CharFn
 }
 
 
@@ -125,26 +221,14 @@ def make_fn_obj(directive, index, options):
     make fn-object for the following directives:
         ~A, ~W, ~C, ~$, ~D,
     """
-    fn_class = CLASS_ROUTER.get(directive, default=NotImplemented)
-    fn = make_fn(directive, options)
+    fn_class = CLASS_ROUTER.get(directive, NotImplemented)
     if fn_class is NotImplemented:
         raise SyntaxError('Directive \'~{}{}\' not implemented '
                           'or not registered in `CLASS_ROUTER`'
                           .format(options, directive))
-    return fn_class(fn=fn, index=index, options=options)
-
-
-def make_fn(directive, options):
-    """
-    Make the callable `fn` to initialize the Fn-Class objects.
-    """
-    func = FUNCTION_ROUTER.get(directive, default=NotImplemented)
-    if func is NotImplemented:
-        raise SyntaxError('Directive \'~{}{}\' not implemented '
-                          'or not registered in `FUNCTION_ROUTER`'
-                          .format(options, directive))
-    # TODO handle any possible exception raised in func
-    return func(options)
+    # As fn has not been removed, but not used any more,
+    # I'm passing a None here
+    return fn_class(index=index, options=options)
 
 
 def _count_atom(atoms: list, find: type):
@@ -159,9 +243,10 @@ def _atom_caller(arg, kwargs):
     """
     Helper to call the Fn-Objects' __call__ methods.
     """
+
     def __atom_caller(atom: Fn):
         # Both ArgFn and IterFn in this case
-        if isinstance(atom, (AnyFn, WriteFn)):
+        if isinstance(atom, ArgFn):
             return atom(*arg)
         elif isinstance(atom, IterFn):
             return atom(*arg)
@@ -181,7 +266,7 @@ def combine_atoms(atoms: list):
     """
     Combine a set of Fn-Objects into a single callable.
     """
-    _arg_count = _count_atom(atoms, AnyFn) + _count_atom(atoms, IterFn)
+    _arg_count = _count_atom(atoms, ArgFn) + _count_atom(atoms, IterFn)
     _kwarg_count = _count_atom(atoms, KwFn)
 
     def __combine_atoms(*args, **kwargs):
