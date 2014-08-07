@@ -3,23 +3,12 @@
 This module implements functions that used in Radix directives.
 """
 from .units import *
-from math import log10, floor
 
 HUNDREDTH = 'hundredth'
 HUNDRED = 'hundred'
 
 
-def _count_digits(digits):
-    if isinstance(digits, int):
-        return floor(log10(digits)) if digits > 0 else 0
-    elif isinstance(digits, str):
-        return len(digits)
-    else:
-        raise TypeError('\'{}\' as {} not countable.'
-                        .format(digits, type(digits)))
-
-
-def _spell_3_digits(value, ordinal=False):
+def _int_english_3_digits(value, ordinal=False):
     """
     Format 3-digits values into a string.
     """
@@ -36,25 +25,44 @@ def _spell_3_digits(value, ordinal=False):
     if hundreds and remains and not ordinal:
         words.append('and')
     if 0 < remains <= 9:
-        words.append(CL_DIGITS[base])
+        if ordinal:
+            words.append(CL_DIGITS_TH[base])
+        else:
+            words.append(CL_DIGITS[base])
     elif 10 <= remains <= 19:
-        words.append(CL_TEENS[remains])
+        if ordinal:
+            words.append(CL_TEENS_TH[remains])
+        else:
+            words.append(CL_TEENS[remains])
+    # remains >= 20
     else:
         if tens and base:
-            words.append(CL_TENS[tens] + '-' + CL_DIGITS[base])
+            if ordinal:
+                words.append(CL_TENS[tens] + '-' + CL_DIGITS_TH[base])
+            else:
+                words.append(CL_TENS[tens] + '-' + CL_DIGITS[base])
         elif not tens and base:
-            words.append(CL_DIGITS[base])
+            if ordinal:
+                words.append(CL_DIGITS_TH[base])
+            else:
+                words.append(CL_DIGITS[base])
         else:
-            words.append(CL_TENS[tens])
+            if ordinal:
+                words.append(CL_TENS_TH[tens])
+            else:
+                words.append(CL_TENS[tens])
     return ' '.join(words)
 
 
-def spell_int(value, ordinal=False):
+def int_english(value, ordinal=False):
     pieces = []
     digit_count = 0
+    combine_last = ordinal
     while value:
         value, digits = divmod(value, 1000)
-        current = _spell_3_digits(digits, ordinal=ordinal)
+        if combine_last and digit_count is 0 and digits >= 100:
+            combine_last = False
+        current = _int_english_3_digits(digits, ordinal=ordinal)
         # when the lowest 3-digits is made ordinal
         # then no more ordinal-digits needed
         if current and ordinal:
@@ -66,5 +74,12 @@ def spell_int(value, ordinal=False):
         else:
             pieces.append(current)
         digit_count += 3
+    if combine_last:
+        second = pieces.pop(0)
+        first = pieces.pop(0)
+        pieces.insert(0, first + ' ' + second)
     pieces.reverse()
     return ', '.join(pieces)
+
+
+

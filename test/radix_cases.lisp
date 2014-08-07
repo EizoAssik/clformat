@@ -1,4 +1,4 @@
-;; use this to generate cases for clformat.utils.radix.spell_int
+;; use this to generate cases for clformat.utils.radix.int_english
 (DOTIMES (c 10)
          (let ((v (random (expt 10 66))))
            (format T
