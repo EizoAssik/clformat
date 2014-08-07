@@ -1,0 +1,2 @@
+;; use this to generate cases for clformat.utils.radix.spell_int
+(format T "~{~{~A, ~A~},~%~}
