@@ -18,11 +18,12 @@ COMMON_BUFFER = 'COMMON_BUFFER'
 OPTION_BUFFER = 'OPTION_BUFFER'
 ATOM_DEST = 'ATOM_DEST'
 CASE_SENSITIVE = 'CASE_SENSITIVE'
-
+OPTION_QUOTE = 'OPTION_QUOTE'
 
 ############
 # Parser Flags
 ############
+
 
 class Flag(object):
     def __init__(self, description):
@@ -77,7 +78,8 @@ def parse_ctrl(ctrl):
               COMMON_BUFFER: [],
               OPTION_BUFFER: [],
               ATOM_DEST: atoms,
-              CASE_SENSITIVE: True}
+              CASE_SENSITIVE: True,
+              OPTION_QUOTE: False}
     dest = atoms
     for current_char in ctrl:
         retval, next_action = next_action(current_char, status)
@@ -140,6 +142,10 @@ def read_tilde(current_char: str, status: dict):
     """
     When meet tildes, the program comes to a big switch.
     """
+    if status[OPTION_QUOTE]:
+        status[OPTION_BUFFER].append(current_char)
+        status[OPTION_QUOTE] = False
+        return None, read_tilde
     escape = {'~': '~',
               '%': '\n',
               '|': '\f'}
@@ -164,9 +170,11 @@ def read_tilde(current_char: str, status: dict):
     # handle prefixing introductions
     elif current_char in {':', '@', ',', '\'', ' '} or current_char.isdigit():
         status[OPTION_BUFFER].append(current_char)
+        if current_char is '\'':
+            status[OPTION_QUOTE] = True
         return None, read_tilde
     # handle directives
-    elif current_char in {'A', 'C', 'W', 'R'}:
+    elif current_char in {'A', 'C', 'W', 'R', 'D', 'B', 'O', 'X'}:
         index = status[CURRENT_ARG_COUNT]
         status[CURRENT_ARG_COUNT] += 1
         options = ''.join(status[OPTION_BUFFER])

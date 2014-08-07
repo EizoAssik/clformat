@@ -1,9 +1,15 @@
+"""
+The CL-format function
+clformat is a Python fork of the format function in CommonLisp
+See README for more information
+"""
 from .parser import parse_ctrl
 
 
 def clformat(dest, ctrl_str, *args, **kwargs):
     """
-    This is the wapper to
+    This is the wrapper to the clformat function, or, the whole package.
+    dest should be True, False, or None.
     """
     _string = _clformat(ctrl_str, *args, **kwargs)
     if dest is False or dest is None:

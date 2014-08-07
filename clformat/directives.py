@@ -300,6 +300,8 @@ class RadixFn(ArgFn):
             raise self.make_syntax_error()
         self.radix, self.mincol, self.interval = \
             Fn.parses_ints_by_index(pieces, 0, 1, 4)
+        if self.radix == 0:
+            self.radix = 10
         self.pad_char, self.comma_char = \
             RadixFn.parse_quoted_chars(*pieces[2:4])
 
@@ -311,11 +313,11 @@ class RadixFn(ArgFn):
         # hence the indexes should be:
         # i = k, 2k+1, 3k+2 ... nk+n-1, i <= L+L//k
         # where k is self.interval and L is then length of digits
-        if self.interval:
+        if 0 < self.interval < len(r_digits):
             l = len(r_digits)
             k = self.interval
-            index = [n * k + n - 1 for n in range(1, k) if
-                     n * k + n - 1 <= l + l // k]
+            index = [n * k + n - 1 for n in range(1, l) if
+                     n * k + n - 1 < l + l // k]
             for i in index:
                 r_digits.insert(i, self.comma_char)
         # now check the new length and insert pac char if needed
@@ -327,14 +329,6 @@ class RadixFn(ArgFn):
 
     @classmethod
     def radix_convert_digits(cls, value: int, radix=10):
-        if radix is 10:
-            return str(value)
-        if radix is 2:
-            return bin(value)[2:]
-        if radix is 8:
-            return oct(value)[2:]
-        if radix is 16:
-            return hex(value)[2:].upper()
         if 2 <= radix <= 36:
             value_abs = abs(value)
             digits = []
@@ -357,12 +351,32 @@ class RadixFn(ArgFn):
         for char in chars:
             if len(char) is 2 and char.startswith('\''):
                 retval.append(char[1])
-            elif len(char) is 0:
+            elif 0 <= len(char) <= 1:
                 retval.append(char)
             else:
                 raise ValueError('\'{}\' is not a valid quoted character.'
                                  .format(char))
         return retval
+
+
+class BinFn(RadixFn):
+    def __init__(self, index=None, options=None):
+        super().__init__(index=index, options='2,' + options)
+
+
+class OctFn(RadixFn):
+    def __init__(self, index=None, options=None):
+        super().__init__(index=index, options='8,' + options)
+
+
+class DecFn(RadixFn):
+    def __init__(self, index=None, options=None):
+        super().__init__(index=index, options=',' + options)
+
+
+class HexFn(RadixFn):
+    def __init__(self, index=None, options=None):
+        super().__init__(index=index, options='16,' + options)
 
 
 class FreshLineFn(StatusFn):
@@ -401,7 +415,11 @@ CLASS_ROUTER = {
     'C': CharFn,
     '&': FreshLineFn,
     # Radix directives
-    'R': RadixFn
+    'R': RadixFn,
+    'D': DecFn,
+    'B': BinFn,
+    'O': OctFn,
+    'X': HexFn
 }
 
 
