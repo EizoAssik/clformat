@@ -79,8 +79,8 @@ def parse_ctrl(ctrl):
               ATOM_DEST: atoms,
               CASE_SENSITIVE: True}
     dest = atoms
-    for c in ctrl:
-        retval, next_action = next_action(c, status)
+    for current_char in ctrl:
+        retval, next_action = next_action(current_char, status)
         if isinstance(retval, (str, ArgFn, StatusFn)):
             dest.append(retval)
         elif isinstance(retval, Exception):
@@ -118,13 +118,13 @@ def parse_ctrl(ctrl):
     return combine_atoms(atoms)
 
 
-def read(c: str, status: dict):
+def read(current_char: str, status: dict):
     """
     The reader to handle plain text.
     This function will simply append current character into the
     status[COMMON_BUFFER], until meet '~'.
     """
-    if c == '~':
+    if current_char == '~':
         if len(status[COMMON_BUFFER]) > 0:
             _buffer = ''.join(status[COMMON_BUFFER])
             status[COMMON_BUFFER].clear()
@@ -132,11 +132,11 @@ def read(c: str, status: dict):
         else:
             return None, read_tilde
     else:
-        status[COMMON_BUFFER].append(c)
+        status[COMMON_BUFFER].append(current_char)
         return None, read
 
 
-def read_tilde(c: str, status: dict):
+def read_tilde(current_char: str, status: dict):
     """
     When meet tildes, the program comes to a big switch.
     """
@@ -144,9 +144,9 @@ def read_tilde(c: str, status: dict):
               '%': '\n',
               '|': '\f'}
     if not status[CASE_SENSITIVE]:
-        c = c.upper()
+        current_char = current_char.upper()
     # handle escaped characters, supporting counts
-    if c in escape:
+    if current_char in escape:
         count = 1
         if status[OPTION_BUFFER]:
             try:
@@ -157,35 +157,38 @@ def read_tilde(c: str, status: dict):
                 raise SyntaxError()
             else:
                 count = opt_count
-        chars = escape[c] * count
+        chars = escape[current_char] * count
         status[OPTION_BUFFER].clear()
         status[COMMON_BUFFER].append(chars)
         return None, read
     # handle prefixing introductions
-    elif c in {':', '@'} or c.isdigit():
-        status[OPTION_BUFFER].append(c)
+    elif current_char in {':', '@', ',', '\'', ' '} or current_char.isdigit():
+        status[OPTION_BUFFER].append(current_char)
         return None, read_tilde
     # handle directives
-    elif c in {'A', 'C', 'W'}:
+    elif current_char in {'A', 'C', 'W', 'R'}:
         index = status[CURRENT_ARG_COUNT]
         status[CURRENT_ARG_COUNT] += 1
         options = ''.join(status[OPTION_BUFFER])
         status[OPTION_BUFFER].clear()
-        return make_fn_obj(directive=c, index=index, options=options), read
-    elif c in {'&'}:
+        return make_fn_obj(directive=current_char, index=index,
+                           options=options), read
+    # handle condition-char
+    elif current_char in {'&'}:
         options = ''.join(status[OPTION_BUFFER])
         status[OPTION_BUFFER].clear()
-        return make_fn_obj(directive=c, options=options), read
-    elif c == '$':
+        return make_fn_obj(directive=current_char, options=options), read
+    elif current_char == '$':
         pass
-    elif c == '{':
+    elif current_char == '{':
         status[ITER_STACK].append([{'index': status[CURRENT_ARG_COUNT],
                                     'depth': len(status[ITER_STACK])}])
         # Restart the counter for this frame.
         status[CURRENT_ARG_COUNT] = 0
         return GO_TO_LAST_ITER, read
-    elif c == '}':
+    elif current_char == '}':
         return GO_UPWARD, read
     else:
         return SyntaxError('clformat cannot parse the directive "~{}{}".'
-                           .format(''.join(status[OPTION_BUFFER]), c)), read
+                           .format(''.join(status[OPTION_BUFFER]),
+                                   current_char)), read

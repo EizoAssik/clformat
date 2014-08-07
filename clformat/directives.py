@@ -3,7 +3,6 @@
 All the functions & classes is implemented here.
 """
 from itertools import cycle
-from unicodedata import name
 import string
 
 
@@ -23,6 +22,7 @@ class Fn(object):
         # self._fn is never used
         self.index = index
         self.options_str = options
+        self.directive = None
 
     def __call__(self, *args, **kwargs):
         """
@@ -33,7 +33,49 @@ class Fn(object):
         pass
 
     def init_option(self):
+        """
+        If needed, this function will be invoke manually in __init__
+        to initialize the self.options.
+        The return value is ignored.
+        """
         return self.options_str
+
+    def parse_prefix(self, only_these=False):
+        """
+        Read the option_str, and return :, @, :@ flags.
+        For C, R, B, D, O, H, etc.
+        """
+        if self.options_str is ':':
+            return True, False, False
+        elif self.options_str is '@':
+            return False, True, False
+        elif self.options_str in {':@', '@:'}:
+            return False, False, True
+        elif only_these:
+            self.make_syntax_error()
+        else:
+            return False, False, False
+
+    def make_syntax_error(self):
+        return SyntaxError('Cannot understand ~{}{}'
+                           .format(self.options_str,
+                                   self.directive))
+
+    @classmethod
+    def parses_ints(cls, *args, empty_as_zero=True):
+        def _empty_as_zero(s):
+            if s is '':
+                return 0
+            return int(s)
+
+        functor = int
+        if empty_as_zero:
+            functor = _empty_as_zero
+        return tuple(map(functor, args))
+
+    @classmethod
+    def parses_ints_by_index(cls, arr, *args):
+        return cls.parses_ints(*(arr[i] for i in args))
 
 
 class ArgFn(Fn):
@@ -45,13 +87,13 @@ class ArgFn(Fn):
     def __init__(self, index=None, options=None):
         super().__init__(index=index, options=options)
 
+    def fn(self, arg):
+        pass
+
     def __call__(self, *args, **kwargs):
         if self.index is None:
             return self.fn(args[0])
         return self.fn(args[self.index])
-
-    def fn(self, arg):
-        pass
 
 
 class StatusFn(Fn):
@@ -106,7 +148,8 @@ class IterFn(Fn):
                 except StopIteration:
                     break
             else:
-                raise TypeError('Except Fn or str. {} get.'.format(type(atom)))
+                raise TypeError('Except Fn or str. {} get.'
+                                .format(type(atom)))
         return ''.join(pieces)
 
 
@@ -118,7 +161,6 @@ class StatusArgFn(ArgFn):
 
 
 class KwFn(Fn):
-    # TODO try make this compatible with the origin {key} notations of Python
     """
     The base class designed to handle the directives
     that uses dictionary arguments.
@@ -168,12 +210,13 @@ class CharFn(ArgFn):
         '\v': 'VTab',
         '\f': 'Page',
         '\r': 'Return',
-        '\l': 'Linefeed',
-        '\a': 'Rubout'
+        # '\l': 'Linefeed',
+        # '\a': 'Rubout'
     }
 
     def __init__(self, index=None, options=None):
         super().__init__(index=index, options=options)
+        self.directive = 'C'
         self.spelled_out = False
         self.read_back = False
         self.keyboard = False
@@ -189,8 +232,7 @@ class CharFn(ArgFn):
         elif self.options_str is ':@' or '@:':
             self.keyboard = True
         else:
-            raise SyntaxError('Cannot understand directive ~{}C'
-                              .format(self.options_str))
+            raise self.make_syntax_error()
         return True
 
     def fn(self, arg: str):
@@ -218,9 +260,115 @@ class CharFn(ArgFn):
             return 'Control-{}'.format(CharFn.spell_out(char[1]))
 
 
+class RadixFn(ArgFn):
+    DIGITS_36 = string.digits + string.ascii_uppercase
+
+    def __init__(self, index=None, options=None):
+        super().__init__(index, options)
+        self.directive = 'R'
+        self.eng = False
+        self.ord_eng = False
+        self.roman = False
+        self.old_roman = False
+        self.radix = 0
+        self.mincol = 0
+        self.interval = 0
+        self.pad_char = ''
+        self.comma_char = ''
+        self.init_option()
+
+    def init_option(self):
+        # When meet ~R
+        if not self.options_str:
+            self.eng = True
+            return
+        # when meet ~:R ~@R ~@:R ~:@R
+        else:
+            has_colon, has_at, has_colon_at = self.parse_prefix()
+            if not (has_colon or has_at or has_colon_at):
+                self.eng = True
+            if has_colon:
+                self.ord_eng = True
+            if has_at:
+                self.roman = True
+            if has_colon_at:
+                self.old_roman = True
+        if self.options_str.endswith(':'):
+            self.options_str = self.options_str[:-1]
+        pieces = self.options_str.split(',')
+        if len(pieces) is not 5:
+            raise self.make_syntax_error()
+        self.radix, self.mincol, self.interval = \
+            Fn.parses_ints_by_index(pieces, 0, 1, 4)
+        self.pad_char, self.comma_char = \
+            RadixFn.parse_quoted_chars(*pieces[2:4])
+
+    def fn(self, value):
+        # TODO handle eng & roman
+        r_digits = RadixFn.radix_convert_digits(value, self.radix)
+        # here, insert the comma char if needed
+        # list.insert will insert an element before the index
+        # hence the indexes should be:
+        # i = k, 2k+1, 3k+2 ... nk+n-1, i <= L+L//k
+        # where k is self.interval and L is then length of digits
+        if self.interval:
+            l = len(r_digits)
+            k = self.interval
+            index = [n * k + n - 1 for n in range(1, k) if
+                     n * k + n - 1 <= l + l // k]
+            for i in index:
+                r_digits.insert(i, self.comma_char)
+        # now check the new length and insert pac char if needed
+        length = len(r_digits)
+        if length < self.mincol:
+            r_digits.append(self.pad_char * (self.mincol - length))
+        r_digits.reverse()
+        return ''.join(r_digits)
+
+    @classmethod
+    def radix_convert_digits(cls, value: int, radix=10):
+        if radix is 10:
+            return str(value)
+        if radix is 2:
+            return bin(value)[2:]
+        if radix is 8:
+            return oct(value)[2:]
+        if radix is 16:
+            return hex(value)[2:].upper()
+        if 2 <= radix <= 36:
+            value_abs = abs(value)
+            digits = []
+            while value_abs > 0:
+                value_abs, remain = divmod(value_abs, radix)
+                digits.append(RadixFn.DIGITS_36[remain])
+            return digits
+        else:
+            raise ValueError('Cannot convert integer into base {}'
+                             .format(radix))
+
+    @classmethod
+    def radix_convert(cls, value: int, radix=10):
+        return ''.join(RadixFn.radix_convert_digits(value, radix).reverse())
+
+
+    @classmethod
+    def parse_quoted_chars(cls, *chars: list):
+        retval = []
+        for char in chars:
+            if len(char) is 2 and char.startswith('\''):
+                retval.append(char[1])
+            elif len(char) is 0:
+                retval.append(char)
+            else:
+                raise ValueError('\'{}\' is not a valid quoted character.'
+                                 .format(char))
+        return retval
+
+
 class FreshLineFn(StatusFn):
     def __init__(self, pieces=None, options=None):
         super().__init__(pieces, options)
+        self.directive = '&'
         self.count = 1
         self.init_option()
 
@@ -232,8 +380,7 @@ class FreshLineFn(StatusFn):
             if count < 0:
                 raise ValueError()
         except:
-            raise SyntaxError('Cannot understand directive ~{}&'
-                              .format(self.options_str))
+            raise self.make_syntax_error()
         else:
             self.count = count
 
@@ -243,17 +390,18 @@ class FreshLineFn(StatusFn):
         for piece in self.pieces:
             if '\n' in piece:
                 return '\n' * self.count
-        return '\n' * (self.count-1)
+        return '\n' * (self.count - 1)
 
 #################
 # Below, functions to make a fn
 #################
 
 CLASS_ROUTER = {
-    'A': AnyFn,
-    'W': WriteFn,
+    # Basic directives
     'C': CharFn,
-    '&': FreshLineFn
+    '&': FreshLineFn,
+    # Radix directives
+    'R': RadixFn
 }
 
 
@@ -310,7 +458,7 @@ def combine_atoms(atoms: list):
                 pieces.append(atom)
             else:
                 raise TypeError('Error occurred during combing atoms. '
-                                'ArgFn/KwFn objects excepted, got {}.'
+                                'Fn objects excepted, got {}.'
                                 .format(str(type(atom))))
         return ''.join(pieces)
 
